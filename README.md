@@ -17,52 +17,49 @@ Once the PDF text is extracted, it needs to be processed using LangChain’s too
 Allow the user to input questions and receive responses based on the content extracted from the PDF document. The user will interact with the chatbot by entering questions, and the bot will provide answers based on the document’s content.
 ### PROGRAM:
 ```
-import PyPDF2
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.chains import QuestionAnsweringChain
-from langchain.llms import OpenAI
+from langchain.embeddings.openai import OpenAIEmbeddings
+from langchain.text_splitter import CharacterTextSplitter, RecursiveCharacterTextSplitter
+from langchain.vectorstores import DocArrayInMemorySearch
+from langchain.document_loaders import TextLoader
+from langchain.chains import RetrievalQA,  ConversationalRetrievalChain
+from langchain.memory import ConversationBufferMemory
+from langchain.chat_models import ChatOpenAI
+from langchain.document_loaders import TextLoader
+from langchain.document_loaders import PyPDFLoader
 
-# Extract PDF text
-def extract_pdf_text(pdf_path):
-    with open(pdf_path, "rb") as file:
-        reader = PyPDF2.PdfReader(file)
-        text = ""
-        for page in range(len(reader.pages)):
-            text += reader.pages[page].extract_text()
-    return text
+def load_db(file, chain_type, k):
+    # load documents
+    loader = PyPDFLoader(file)
+    documents = loader.load()
 
-# Initialize LLM (OpenAI, or other LLMs)
-llm = OpenAI(temperature=0.7)
+    # split documents
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=150)
+    docs = text_splitter.split_documents(documents)
 
-# Initialize TextSplitter
-splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+    # define embedding
+    embeddings = OpenAIEmbeddings()
 
-# Create Q&A Chain
-qa_chain = QuestionAnsweringChain.from_llm(llm)
+    # create vector database from data
+    db = DocArrayInMemorySearch.from_documents(docs, embeddings)
 
-def answer_question(question, chunks):
-    context = " ".join(chunks)
-    return qa_chain.run({"input_document": context, "question": question})
+    # define retriever
+    retriever = db.as_retriever(search_type="similarity", search_kwargs={"k": k})
 
-def main():
-    pdf_path = "document.pdf"  # Provide the path to your PDF file
-    extracted_text = extract_pdf_text(pdf_path)
-    chunks = splitter.split_text(extracted_text)
-    
-    print("PDF-based Question Answering Chatbot")
-    
-    while True:
-        question = input("Ask a question (or 'quit' to exit): ")
-        if question.lower() == "quit":
-            break
-        answer = answer_question(question, chunks)
-        print(f"Answer: {answer}")
-
-if __name__ == "__main__":
-    main()
+    # create a chatbot chain. Memory is managed externally.
+    qa = ConversationalRetrievalChain.from_llm(
+        llm=ChatOpenAI(model_name=llm_name, temperature=0), 
+        chain_type=chain_type, 
+        retriever=retriever, 
+        return_source_documents=True,
+        return_generated_question=True,
+    )
+    return qa 
 ```
 ### OUTPUT:
-![image](https://github.com/user-attachments/assets/6c19b4d3-38c4-46aa-b868-7149113d7a17)
+![image](https://github.com/user-attachments/assets/03257d90-141f-4ea1-b5b2-a5dff0279e92)
+![image](https://github.com/user-attachments/assets/c821be8e-73e6-4cae-8ddd-5ba4d11d9bf7)
+![image](https://github.com/user-attachments/assets/bed3790c-6795-475c-b51b-782111e9445c)
+
 
 ### RESULT:
 The chatbot successfully extracts content from the provided PDF document and answers user queries based on the text. The results can vary depending on the complexity and clarity of the document, but the chatbot aims to provide accurate and relevant answers. The system can be further enhanced with more advanced features like document summarization or handling more complex question-answering scenarios.
